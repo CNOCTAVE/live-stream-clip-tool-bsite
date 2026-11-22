@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (c) 2026 cnoctave.top -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- This file is part of LiveStreamClipTool; see LICENSE for the full license text. -->
+
+<Page
+    x:Class="LiveStreamClipTool.Views.StreamerPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:LiveStreamClipTool.Views"
+    Background="Transparent">
+
+    <Page.Resources>
+        <Style x:Key="HeaderButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="4,2" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+        <Style x:Key="CellText" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Margin" Value="4,0" />
+        </Style>
+    </Page.Resources>
+
+    <Grid Padding="24,18,24,18" RowSpacing="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- 工具栏 -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <Button x:Name="AreaAddButton" Content="一键添加分区推荐主播"
+                    Click="AreaAddButton_Click" />
+            <Button x:Name="AddButton" Content="添加主播" Style="{StaticResource AccentButtonStyle}"
+                    Click="AddButton_Click" />
+            <TextBox x:Name="SearchBox" Width="300" PlaceholderText="搜索昵称 / UID / 直播间ID / 标题"
+                     TextChanged="SearchBox_TextChanged" />
+            <CheckBox x:Name="SelectAllBox" Content="全选" VerticalAlignment="Center"
+                      Checked="SelectAll_Changed" Unchecked="SelectAll_Changed" />
+            <Button Content="一键删除" Click="DeleteSelected_Click" />
+            <Button x:Name="RestoreOrderButton" Content="恢复手动顺序" Visibility="Collapsed"
+                    Click="RestoreOrder_Click" />
+            <Button Content="刷新" Click="Refresh_Click" />
+            <ProgressRing x:Name="BusyRing" Width="20" Height="20" IsActive="False" />
+            <TextBlock x:Name="SortHint" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       VerticalAlignment="Center" />
+        </StackPanel>
+
+        <!-- 提示条 -->
+        <InfoBar x:Name="PageInfo" Grid.Row="1" IsOpen="False" IsClosable="True" />
+
+        <!-- 表头 -->
+        <Grid Grid.Row="2" Padding="4,0" BorderThickness="0,0,0,1"
+              BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="32" />
+                <ColumnDefinition Width="40" />
+                <ColumnDefinition Width="1.3*" />
+                <ColumnDefinition Width="0.9*" />
+                <ColumnDefinition Width="0.9*" />
+                <ColumnDefinition Width="1.9*" />
+                <ColumnDefinition Width="1.1*" />
+                <ColumnDefinition Width="1.1*" />
+                <ColumnDefinition Width="72" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="⣿" FontSize="12" VerticalAlignment="Center"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       ToolTipService.ToolTip="手动顺序下可拖动排序" />
+            <Button Grid.Column="2" x:Name="NickHeader" Content="主播昵称" Tag="nickname"
+                    Style="{StaticResource HeaderButton}" Click="Header_Click" />
+            <Button Grid.Column="3" x:Name="UidHeader" Content="主播 UID" Tag="uid"
+                    Style="{StaticResource HeaderButton}" Click="Header_Click" />
+            <Button Grid.Column="4" x:Name="RoomHeader" Content="直播间ID" Tag="room"
+                    Style="{StaticResource HeaderButton}" Click="Header_Click" />
+            <Button Grid.Column="5" x:Name="TitleHeader" Content="直播间标题" Tag="title"
+                    Style="{StaticResource HeaderButton}" Click="Header_Click" />
+            <Button Grid.Column="6" x:Name="UpdatedHeader" Content="更新时间" Tag="updated"
+                    Style="{StaticResource HeaderButton}" Click="Header_Click" />
+            <Button Grid.Column="7" x:Name="CreatedHeader" Content="首次添加时间" Tag="created"
+                    Style="{StaticResource HeaderButton}" Click="Header_Click" />
+            <TextBlock Grid.Column="8" Text="操作" FontSize="12" FontWeight="SemiBold"
+                       VerticalAlignment="Center" Margin="4,0"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </Grid>
+
+        <!-- 主播列表 -->
+        <ListView x:Name="StreamerList" Grid.Row="3"
+                  ItemsSource="{x:Bind Rows}"
+                  SelectionMode="None"
+                  CanReorderItems="True" AllowDrop="True"
+                  DragItemsCompleted="StreamerList_DragItemsCompleted"
+                  ScrollViewer.HorizontalScrollMode="Disabled"
+                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="MinHeight" Value="40" />
+                </Style>
+            </ListView.ItemContainerStyle>
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="local:StreamerRow">
+                    <Grid Padding="4,0" MinHeight="40">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="32" />
+                            <ColumnDefinition Width="40" />
+                            <ColumnDefinition Width="1.3*" />
+                            <ColumnDefinition Width="0.9*" />
+                            <ColumnDefinition Width="0.9*" />
+                            <ColumnDefinition Width="1.9*" />
+                            <ColumnDefinition Width="1.1*" />
+                            <ColumnDefinition Width="1.1*" />
+                            <ColumnDefinition Width="72" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Grid.Column="0" Glyph="&#xE76F;" FontSize="14"
+                                  Visibility="{x:Bind DragHandleVisibility, Mode=OneWay}"
+                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                  VerticalAlignment="Center" HorizontalAlignment="Center"
+                                  ToolTipService.ToolTip="按住拖动可调整顺序" />
+                        <CheckBox Grid.Column="1" MinWidth="0" Width="32"
+                                  VerticalAlignment="Center"
+                                  IsChecked="{x:Bind IsSelected, Mode=TwoWay}"
+                                  Checked="RowCheck_Changed" Unchecked="RowCheck_Changed" />
+                        <TextBlock Grid.Column="2" Style="{StaticResource CellText}"
+                                   Text="{x:Bind Nickname}" ToolTipService.ToolTip="{x:Bind Nickname}" />
+                        <TextBlock Grid.Column="3" Style="{StaticResource CellText}"
+                                   Text="{x:Bind Uid}" />
+                        <TextBlock Grid.Column="4" Style="{StaticResource CellText}"
+                                   Text="{x:Bind RoomId}" />
+                        <TextBlock Grid.Column="5" Style="{StaticResource CellText}"
+                                   Text="{x:Bind RoomTitle}" ToolTipService.ToolTip="{x:Bind RoomTitle}" />
+                        <TextBlock Grid.Column="6" Style="{StaticResource CellText}"
+                                   Text="{x:Bind UpdatedText}" />
+                        <TextBlock Grid.Column="7" Style="{StaticResource CellText}"
+                                   Text="{x:Bind CreatedText}" />
+                        <Button Grid.Column="8" Content="删除" FontSize="12" MinWidth="0"
+                                Padding="10,3" VerticalAlignment="Center"
+                                Click="DeleteRow_Click" />
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+    </Grid>
+</Page>

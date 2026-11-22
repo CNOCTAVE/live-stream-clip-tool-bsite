@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (c) 2026 cnoctave.top -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- This file is part of LiveStreamClipTool; see LICENSE for the full license text. -->
+
+<Page
+    x:Class="LiveStreamClipTool.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="Transparent">
+
+    <Grid Padding="24,18,24,18" RowSpacing="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <Button Content="保存设置" Style="{StaticResource AccentButtonStyle}"
+                    Click="Save_Click" />
+            <Button Content="恢复默认值" Click="Reset_Click" />
+            <TextBlock Text="所有设置保存在本地 SQLite 数据库" FontSize="12"
+                       VerticalAlignment="Center"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+
+        <InfoBar x:Name="PageInfo" Grid.Row="1" IsOpen="False" IsClosable="True" />
+
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="12" MaxWidth="920" HorizontalAlignment="Left">
+
+                <!-- 存储路径 -->
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="16">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="存储路径" FontSize="15" FontWeight="SemiBold" />
+                        <TextBlock FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Text="只需设置一个根目录。录播、切片、临时文件等会按功能自动拼接子目录分别存放，保存后自动创建。" />
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0" x:Name="RootBox" PlaceholderText="根目录"
+                                     TextChanged="RootBox_TextChanged" />
+                            <Button Grid.Column="1" Content="浏览…" Click="BrowseRoot_Click" />
+                            <Button Grid.Column="2" Content="打开" Click="OpenRoot_Click" />
+                        </Grid>
+                        <StackPanel Spacing="4">
+                            <TextBlock x:Name="RecordingsDirText" FontSize="12" IsTextSelectionEnabled="True" />
+                            <TextBlock x:Name="ClipsDirText" FontSize="12" IsTextSelectionEnabled="True" />
+                            <TextBlock x:Name="TempDirText" FontSize="12" IsTextSelectionEnabled="True" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- 录播设置 -->
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="16">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="录播" FontSize="15" FontWeight="SemiBold" />
+                        <Grid ColumnSpacing="12" RowSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="220" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="自动停止录播时长"
+                                       VerticalAlignment="Center" />
+                            <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                <NumberBox x:Name="AutoStopBox" Width="160" Minimum="0" Maximum="1440"
+                                           SpinButtonPlacementMode="Compact" />
+                                <TextBlock Text="分钟（0 表示关闭）" VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="录制画质"
+                                       VerticalAlignment="Center" />
+                            <ComboBox Grid.Row="1" Grid.Column="1" x:Name="QnBox" Width="220">
+                                <ComboBoxItem Content="原画（推荐）" Tag="10000" />
+                                <ComboBoxItem Content="4K" Tag="20000" />
+                                <ComboBoxItem Content="蓝光" Tag="400" />
+                                <ComboBoxItem Content="超清" Tag="250" />
+                                <ComboBoxItem Content="高清" Tag="150" />
+                                <ComboBoxItem Content="流畅" Tag="80" />
+                            </ComboBox>
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="录制停止后自动切片"
+                                       VerticalAlignment="Center" />
+                            <ToggleSwitch Grid.Row="2" Grid.Column="1" x:Name="AutoClipSwitch"
+                                          OnContent="开启" OffContent="关闭" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- 切片参数 -->
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="16">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="切片参数" FontSize="15" FontWeight="SemiBold" />
+                        <TextBlock FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Text="自动切片按响度检测有效内容，在停顿处分段；低于最短时长的片段会被丢弃，超过最长时长的片段会被强制拆分，间隔小于合并值的相邻片段会被合并。" />
+                        <Grid ColumnSpacing="12" RowSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="220" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="最短片段时长"
+                                       VerticalAlignment="Center" />
+                            <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                <NumberBox x:Name="MinSegBox" Width="160" Minimum="10" Maximum="600"
+                                           SpinButtonPlacementMode="Compact" />
+                                <TextBlock Text="秒" VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="最长片段时长"
+                                       VerticalAlignment="Center" />
+                            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                <NumberBox x:Name="MaxSegBox" Width="160" Minimum="60" Maximum="3600"
+                                           SpinButtonPlacementMode="Compact" />
+                                <TextBlock Text="秒" VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="相邻片段合并间隔"
+                                       VerticalAlignment="Center" />
+                            <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                <NumberBox x:Name="MergeGapBox" Width="160" Minimum="0" Maximum="600"
+                                           SpinButtonPlacementMode="Compact" />
+                                <TextBlock Text="秒" VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="CPU 总占用上限"
+                                       VerticalAlignment="Center" />
+                            <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                <NumberBox x:Name="CpuTotalBox" Width="160" Minimum="0" Maximum="100"
+                                           SpinButtonPlacementMode="Compact" />
+                                <TextBlock Text="%（0 表示不限制）" VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="最高单核占用上限"
+                                       VerticalAlignment="Center" />
+                            <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                <NumberBox x:Name="CpuCoreBox" Width="160" Minimum="0" Maximum="100"
+                                           SpinButtonPlacementMode="Compact" />
+                                <TextBlock Text="%（0 表示不限制）" VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Text="自动切片开始前会检查 CPU 占用：总占用或最高单核占用达到上限时，任务留在队列中等待，降到上限以下再继续。" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 可执行文件路径 -->
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="16">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="可执行文件路径" FontSize="15" FontWeight="SemiBold" />
+                        <TextBlock FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Text="可选。留空时自动从 PATH、Chocolatey、WinGet 等位置查找；如果通过依赖管理安装后仍未检测到，可在此手动指定。" />
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="110" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="ffmpeg.exe" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1" x:Name="FfmpegBox"
+                                     PlaceholderText="留空表示自动检测" />
+                            <Button Grid.Column="2" Content="浏览…" Tag="ffmpeg"
+                                    Click="BrowseExe_Click" />
+                        </Grid>
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="110" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="python.exe" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1" x:Name="PythonBox"
+                                     PlaceholderText="留空表示自动检测" />
+                            <Button Grid.Column="2" Content="浏览…" Tag="python"
+                                    Click="BrowseExe_Click" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>
