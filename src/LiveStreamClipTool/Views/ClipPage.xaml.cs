@@ -5,6 +5,7 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using LiveStreamClipTool.Services;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -12,8 +13,17 @@ namespace LiveStreamClipTool.Views;
 
 public sealed partial class ClipPage : Page
 {
+    private const int DefaultPageSize = 10;
+
     private bool _suppressSelectAll;
     private bool _suppressRowEvents;
+    private bool _filtersReady;
+    private bool _suppressFilterEvents;
+    private int _page = 1;
+    private int _pageSize = DefaultPageSize;
+    private int _total;
+    private string _nicknameFilter = "";
+    private DispatcherQueueTimer? _searchTimer;
 
     public ObservableCollection<ClipRow> ClipRows { get; } = new();
 
@@ -28,7 +38,8 @@ public sealed partial class ClipPage : Page
     {
         AppServices.AutoClip.Changed += AutoClip_Changed;
         AppServices.AutoClip.ProgressChanged += AutoClip_ProgressChanged;
-        LoadData();
+        SetupPaging();
+        LoadPage();
         UpdateProgressVisibility();
     }
 
@@ -36,12 +47,13 @@ public sealed partial class ClipPage : Page
     {
         AppServices.AutoClip.Changed -= AutoClip_Changed;
         AppServices.AutoClip.ProgressChanged -= AutoClip_ProgressChanged;
+        _searchTimer?.Stop();
     }
 
     private void AutoClip_Changed(object? sender, EventArgs e) =>
         DispatcherQueue.TryEnqueue(() =>
         {
-            LoadData();
+            LoadPage();
             UpdateProgressVisibility();
         });
 
@@ -79,10 +91,69 @@ public sealed partial class ClipPage : Page
         }
     }
 
-    private void LoadData()
+    private void SetupPaging()
     {
+        if (_filtersReady)
+        {
+            return;
+        }
+        _filtersReady = true;
+        _suppressFilterEvents = true;
+        PageSizeBox.ItemsSource = new[] { 10, 20, 50, 100 };
+        PageSizeBox.SelectedItem = DefaultPageSize;
+        _suppressFilterEvents = false;
+        ReloadNicknames();
+
+        _searchTimer = DispatcherQueue.CreateTimer();
+        _searchTimer.Interval = TimeSpan.FromMilliseconds(300);
+        _searchTimer.IsRepeating = false;
+        _searchTimer.Tick += (_, _) =>
+        {
+            _page = 1;
+            LoadPage();
+        };
+    }
+
+    private void ReloadNicknames()
+    {
+        _suppressFilterEvents = true;
+        try
+        {
+            var names = AppServices.Clips.GetStreamerNicknames();
+            NicknameBox.ItemsSource = names;
+            if (_nicknameFilter.Length > 0)
+            {
+                NicknameBox.SelectedItem = names.FirstOrDefault(n =>
+                    string.Equals(n, _nicknameFilter, StringComparison.Ordinal));
+            }
+        }
+        finally
+        {
+            _suppressFilterEvents = false;
+        }
+    }
+
+    private int TotalPages => Math.Max(1, (_total + _pageSize - 1) / _pageSize);
+
+    private void LoadPage()
+    {
+        var (items, total) = AppServices.Clips.GetPage(
+            (_page - 1) * _pageSize, _pageSize, _nicknameFilter);
+        var pages = Math.Max(1, (total + _pageSize - 1) / _pageSize);
+        if (_page > pages && total > 0)
+        {
+            _page = pages;
+            (items, total) = AppServices.Clips.GetPage(
+                (_page - 1) * _pageSize, _pageSize, _nicknameFilter);
+        }
+        if (total == 0)
+        {
+            _page = 1;
+        }
+        _total = total;
+
         ClipRows.Clear();
-        foreach (var clip in AppServices.Clips.GetRecent(500))
+        foreach (var clip in items)
         {
             ClipRows.Add(new ClipRow
             {
@@ -93,8 +164,82 @@ public sealed partial class ClipPage : Page
                 FilePath = clip.FilePath
             });
         }
-        CountText.Text = $"共 {ClipRows.Count} 个切片";
+        CountText.Text = $"共 {_total} 个切片";
+        PageText.Text = $"第 {_page} / {TotalPages} 页";
+        PrevPageButton.IsEnabled = _page > 1;
+        NextPageButton.IsEnabled = _page < TotalPages;
         RefreshSelectAllState();
+    }
+
+    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_suppressFilterEvents)
+        {
+            return;
+        }
+        var text = SearchBox.Text.Trim();
+        if (NicknameBox.SelectedItem is string selected &&
+            !string.Equals(selected, text, StringComparison.Ordinal))
+        {
+            _suppressFilterEvents = true;
+            NicknameBox.SelectedIndex = -1;
+            _suppressFilterEvents = false;
+        }
+        _nicknameFilter = text;
+        if (_searchTimer is null)
+        {
+            _page = 1;
+            LoadPage();
+            return;
+        }
+        _searchTimer.Stop();
+        _searchTimer.Start();
+    }
+
+    private void NicknameBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressFilterEvents || NicknameBox.SelectedItem is not string name)
+        {
+            return;
+        }
+        _suppressFilterEvents = true;
+        SearchBox.Text = name;
+        _suppressFilterEvents = false;
+        _nicknameFilter = name;
+        _searchTimer?.Stop();
+        _page = 1;
+        LoadPage();
+    }
+
+    private void PageSizeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressFilterEvents || PageSizeBox.SelectedItem is not int size)
+        {
+            return;
+        }
+        _pageSize = size;
+        _page = 1;
+        LoadPage();
+    }
+
+    private void PrevPage_Click(object sender, RoutedEventArgs e)
+    {
+        if (_page <= 1)
+        {
+            return;
+        }
+        _page--;
+        LoadPage();
+    }
+
+    private void NextPage_Click(object sender, RoutedEventArgs e)
+    {
+        if (_page >= TotalPages)
+        {
+            return;
+        }
+        _page++;
+        LoadPage();
     }
 
     private void RefreshSelectAllState()
@@ -136,7 +281,8 @@ public sealed partial class ClipPage : Page
 
     private void Refresh_Click(object sender, RoutedEventArgs e)
     {
-        LoadData();
+        ReloadNicknames();
+        LoadPage();
         PageInfo.Severity = InfoBarSeverity.Success;
         PageInfo.Message = "切片列表已刷新";
         PageInfo.IsOpen = true;
@@ -172,7 +318,7 @@ public sealed partial class ClipPage : Page
         }
 
         var cleared = AppServices.AutoClip.ClearQueue();
-        LoadData();
+        LoadPage();
         PageInfo.Severity = InfoBarSeverity.Success;
         PageInfo.Message = AppServices.AutoClip.IsBusy
             ? $"已清空 {cleared} 个等待任务，当前任务执行完后队列为空"
@@ -231,7 +377,7 @@ public sealed partial class ClipPage : Page
             }
         }
 
-        LoadData();
+        LoadPage();
         PageInfo.Severity = failed > 0 ? InfoBarSeverity.Warning : InfoBarSeverity.Success;
         PageInfo.Message = $"已删除 {removed} 个切片" +
                            (missing > 0 ? $"（{missing} 个文件不存在，已直接清理记录）" : "") +
@@ -261,7 +407,7 @@ public sealed partial class ClipPage : Page
         }
 
         var result = ClipDeletion.Delete(row.Id, row.FilePath);
-        LoadData();
+        LoadPage();
         PageInfo.Severity = result.Ok ? InfoBarSeverity.Success : InfoBarSeverity.Error;
         PageInfo.Message = result.Ok
             ? result.Missing ? "文件不存在，已清理切片记录、文字文件、封面和识别任务" : "已删除切片、文字文件、封面和相关记录"

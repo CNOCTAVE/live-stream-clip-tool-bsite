@@ -48,16 +48,48 @@
                 <Grid RowSpacing="8">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <Grid>
                         <TextBlock Text="原版切片" FontSize="15" FontWeight="SemiBold" />
                         <TextBlock x:Name="CountText" HorizontalAlignment="Right" FontSize="12"
+                                   AutomationProperties.AutomationId="CountText"
                                    VerticalAlignment="Center"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </Grid>
-                    <Grid Grid.Row="1">
+                    <Grid Grid.Row="1" ColumnSpacing="6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="130" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="SearchBox" PlaceholderText="按主播昵称搜索"
+                                 AutomationProperties.AutomationId="ClipSearchBox"
+                                 TextChanged="SearchBox_TextChanged" />
+                        <ComboBox x:Name="NicknameBox" Grid.Column="1" PlaceholderText="选择主播"
+                                  AutomationProperties.AutomationId="NicknameFilterBox"
+                                  SelectionChanged="NicknameBox_SelectionChanged" />
+                    </Grid>
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="每页" FontSize="12" VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <ComboBox x:Name="PageSizeBox" Width="70"
+                                  AutomationProperties.AutomationId="PageSizeBox"
+                                  SelectionChanged="PageSizeBox_SelectionChanged" />
+                        <Button x:Name="PrevPageButton" Content="上一页"
+                                AutomationProperties.AutomationId="PrevPageButton"
+                                Click="PrevPage_Click" />
+                        <TextBlock x:Name="PageText" FontSize="12" VerticalAlignment="Center"
+                                   AutomationProperties.AutomationId="PageText"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <Button x:Name="NextPageButton" Content="下一页"
+                                AutomationProperties.AutomationId="NextPageButton"
+                                Click="NextPage_Click" />
+                    </StackPanel>
+                    <Grid Grid.Row="3">
                         <ListView x:Name="ClipList"
+                                  AutomationProperties.AutomationId="ClipList"
                                   ItemsSource="{x:Bind ClipRows}"
                                   SelectionMode="Single"
                                   SelectionChanged="ClipList_SelectionChanged"
@@ -87,8 +119,19 @@
                                                        TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                         </StackPanel>
-                                        <Button Grid.Column="1" Content="删除" VerticalAlignment="Center"
-                                                Click="DeleteRow_Click" />
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
+                                                    VerticalAlignment="Center">
+                                            <Button Content="打开" FontSize="12" MinWidth="0"
+                                                    Padding="8,3" Click="OpenVideo_Click" />
+                                            <Button MinWidth="0" Padding="8,3"
+                                                    Click="OpenInExplorer_Click"
+                                                    AutomationProperties.Name="在文件管理器中打开"
+                                                    ToolTipService.ToolTip="在文件管理器中打开">
+                                                <SymbolIcon Symbol="Folder" />
+                                            </Button>
+                                            <Button Content="删除" FontSize="12" MinWidth="0"
+                                                    Padding="8,3" Click="DeleteRow_Click" />
+                                        </StackPanel>
                                     </Grid>
                                 </DataTemplate>
                             </ListView.ItemTemplate>
@@ -119,6 +162,7 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <TextBox x:Name="FileNameBox" PlaceholderText="输入新的文件名"
+                                         AutomationProperties.AutomationId="FileNameBox"
                                          TextChanged="FileNameBox_TextChanged" />
                                 <TextBlock x:Name="ExtText" Grid.Column="1" VerticalAlignment="Center"
                                            FontSize="12"
@@ -229,6 +273,7 @@
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        Text="封面文字（按回车换行，每行随机颜色）" />
                             <TextBox x:Name="CoverTextBox" Height="76" AcceptsReturn="True"
+                                     AutomationProperties.AutomationId="CoverTextBox"
                                      TextWrapping="Wrap"
                                      ScrollViewer.VerticalScrollBarVisibility="Auto"
                                      VerticalContentAlignment="Top"
@@ -240,6 +285,9 @@
                                         IsEnabled="False" Click="Cover_Click" />
                                 <Button x:Name="RerollButton" Content="换一换"
                                         IsEnabled="False" Click="Reroll_Click" />
+                                <Button x:Name="SyncFileNameButton" Content="同步文件名"
+                                        AutomationProperties.AutomationId="SyncFileNameButton"
+                                        IsEnabled="False" Click="SyncFileName_Click" />
                             </StackPanel>
 
                             <Grid ColumnSpacing="8">

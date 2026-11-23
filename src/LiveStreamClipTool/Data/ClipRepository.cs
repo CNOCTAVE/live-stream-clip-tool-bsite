@@ -33,27 +33,77 @@ public sealed class ClipRepository
         return (long)(cmd.ExecuteScalar() ?? 0L);
     }
 
-    public List<Clip> GetRecent(int limit = 500)
+    /// <summary>按时间倒序分页；nickname 为部分匹配的主播昵称过滤，空表示全部。</summary>
+    public (List<Clip> Items, int Total) GetPage(int offset, int limit, string? nickname)
     {
+        var hasFilter = !string.IsNullOrWhiteSpace(nickname);
+        var where = hasFilter ? "WHERE s.nickname LIKE @like ESCAPE '\\'" : "";
         using var conn = _db.Open();
+
+        using var countCmd = conn.CreateCommand();
+        countCmd.CommandText = $"""
+            SELECT COUNT(*)
+            FROM clips c
+            LEFT JOIN streamers s ON s.id = c.streamer_id
+            {where};
+            """;
+        if (hasFilter)
+        {
+            countCmd.Parameters.AddWithValue("@like", LikePattern(nickname!));
+        }
+        var total = Convert.ToInt32(countCmd.ExecuteScalar() ?? 0);
+
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
+        cmd.CommandText = $"""
             SELECT c.id, c.recording_id, c.streamer_id, c.title, c.file_path,
                    c.clip_time, c.duration_sec, c.created_at,
                    COALESCE(s.nickname, ''), COALESCE(s.room_id, '')
             FROM clips c
             LEFT JOIN streamers s ON s.id = c.streamer_id
+            {where}
             ORDER BY c.clip_time DESC, c.id DESC
-            LIMIT @limit;
+            LIMIT @limit OFFSET @offset;
             """;
-        cmd.Parameters.AddWithValue("@limit", limit);
+        if (hasFilter)
+        {
+            cmd.Parameters.AddWithValue("@like", LikePattern(nickname!));
+        }
+        cmd.Parameters.AddWithValue("@limit", Math.Clamp(limit, 1, 500));
+        cmd.Parameters.AddWithValue("@offset", Math.Max(0, offset));
         using var reader = cmd.ExecuteReader();
         var list = new List<Clip>();
         while (reader.Read())
         {
             list.Add(Map(reader));
         }
+        return (list, total);
+    }
+
+    /// <summary>切片中出现过的主播昵称，供筛选下拉框使用。</summary>
+    public List<string> GetStreamerNicknames()
+    {
+        using var conn = _db.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT DISTINCT s.nickname
+            FROM clips c
+            JOIN streamers s ON s.id = c.streamer_id
+            WHERE TRIM(s.nickname) <> ''
+            ORDER BY s.nickname COLLATE NOCASE;
+            """;
+        using var reader = cmd.ExecuteReader();
+        var list = new List<string>();
+        while (reader.Read())
+        {
+            list.Add(reader.GetString(0));
+        }
         return list;
+    }
+
+    private static string LikePattern(string value)
+    {
+        var escaped = value.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+        return $"%{escaped}%";
     }
 
     public List<Clip> GetByStreamer(long streamerId)

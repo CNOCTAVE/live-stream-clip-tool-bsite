@@ -3,7 +3,9 @@
 // This file is part of LiveStreamClipTool; see LICENSE for the full license text.
 
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using LiveStreamClipTool.Services;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -16,6 +18,8 @@ namespace LiveStreamClipTool.Views;
 
 public sealed partial class ClipExportPage : Page
 {
+    private const int DefaultPageSize = 10;
+
     private static readonly SolidColorBrush AccentBorder = new(Color.FromArgb(255, 0, 120, 212));
     private static readonly SolidColorBrush NormalBorder = new(Color.FromArgb(255, 96, 96, 96));
 
@@ -31,6 +35,13 @@ public sealed partial class ClipExportPage : Page
     private bool _framesLoading;
     private bool _coverExists;
     private bool _transcriptExpanded;
+    private bool _filtersReady;
+    private bool _suppressFilterEvents;
+    private int _page = 1;
+    private int _pageSize = DefaultPageSize;
+    private int _total;
+    private string _nicknameFilter = "";
+    private DispatcherQueueTimer? _searchTimer;
 
     public ObservableCollection<ClipExportRow> ClipRows { get; } = new();
 
@@ -45,7 +56,8 @@ public sealed partial class ClipExportPage : Page
     {
         AppServices.AutoClip.Changed += AutoClip_Changed;
         AppServices.AutoClip.ProgressChanged += AutoClip_ProgressChanged;
-        LoadData();
+        SetupPaging();
+        LoadPage();
         SyncTranscriptState();
     }
 
@@ -53,6 +65,7 @@ public sealed partial class ClipExportPage : Page
     {
         AppServices.AutoClip.Changed -= AutoClip_Changed;
         AppServices.AutoClip.ProgressChanged -= AutoClip_ProgressChanged;
+        _searchTimer?.Stop();
         _frameCts?.Cancel();
         _frameCts?.Dispose();
         _frameCts = null;
@@ -62,7 +75,7 @@ public sealed partial class ClipExportPage : Page
     private void AutoClip_Changed(object? sender, EventArgs e) =>
         DispatcherQueue.TryEnqueue(() =>
         {
-            LoadData();
+            LoadPage();
             SyncTranscriptState();
         });
 
@@ -94,12 +107,71 @@ public sealed partial class ClipExportPage : Page
         PageInfo.IsOpen = message.Length > 0;
     }
 
-    private void LoadData()
+    private void SetupPaging()
+    {
+        if (_filtersReady)
+        {
+            return;
+        }
+        _filtersReady = true;
+        _suppressFilterEvents = true;
+        PageSizeBox.ItemsSource = new[] { 10, 20, 50, 100 };
+        PageSizeBox.SelectedItem = DefaultPageSize;
+        _suppressFilterEvents = false;
+        ReloadNicknames();
+
+        _searchTimer = DispatcherQueue.CreateTimer();
+        _searchTimer.Interval = TimeSpan.FromMilliseconds(300);
+        _searchTimer.IsRepeating = false;
+        _searchTimer.Tick += (_, _) =>
+        {
+            _page = 1;
+            LoadPage();
+        };
+    }
+
+    private void ReloadNicknames()
+    {
+        _suppressFilterEvents = true;
+        try
+        {
+            var names = AppServices.Clips.GetStreamerNicknames();
+            NicknameBox.ItemsSource = names;
+            if (_nicknameFilter.Length > 0)
+            {
+                NicknameBox.SelectedItem = names.FirstOrDefault(n =>
+                    string.Equals(n, _nicknameFilter, StringComparison.Ordinal));
+            }
+        }
+        finally
+        {
+            _suppressFilterEvents = false;
+        }
+    }
+
+    private int TotalPages => Math.Max(1, (_total + _pageSize - 1) / _pageSize);
+
+    private void LoadPage()
     {
         var keepId = _currentId;
+        var (items, total) = AppServices.Clips.GetPage(
+            (_page - 1) * _pageSize, _pageSize, _nicknameFilter);
+        var pages = Math.Max(1, (total + _pageSize - 1) / _pageSize);
+        if (_page > pages && total > 0)
+        {
+            _page = pages;
+            (items, total) = AppServices.Clips.GetPage(
+                (_page - 1) * _pageSize, _pageSize, _nicknameFilter);
+        }
+        if (total == 0)
+        {
+            _page = 1;
+        }
+        _total = total;
+
         _reloading = true;
         ClipRows.Clear();
-        foreach (var clip in AppServices.Clips.GetRecent(500))
+        foreach (var clip in items)
         {
             var fileName = Path.GetFileName(clip.FilePath);
             ClipRows.Add(new ClipExportRow
@@ -113,7 +185,11 @@ public sealed partial class ClipExportPage : Page
                 DurationSeconds = clip.DurationSeconds
             });
         }
-        CountText.Text = $"共 {ClipRows.Count} 个切片";
+        CountText.Text = $"共 {_total} 个切片";
+        PageText.Text = $"第 {_page} / {TotalPages} 页";
+        PrevPageButton.IsEnabled = _page > 1;
+        NextPageButton.IsEnabled = _page < TotalPages;
+        EmptyHint.Text = _nicknameFilter.Length > 0 ? "没有匹配的切片" : "暂无切片";
         EmptyHint.Visibility = ClipRows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         ClipList.SelectedItem = keepId == 0
             ? null
@@ -151,9 +227,81 @@ public sealed partial class ClipExportPage : Page
 
     private void Refresh_Click(object sender, RoutedEventArgs e)
     {
-        LoadData();
+        ReloadNicknames();
+        LoadPage();
         SyncTranscriptState();
         ShowInfo(InfoBarSeverity.Success, "切片列表已刷新");
+    }
+
+    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_suppressFilterEvents)
+        {
+            return;
+        }
+        var text = SearchBox.Text.Trim();
+        if (NicknameBox.SelectedItem is string selected &&
+            !string.Equals(selected, text, StringComparison.Ordinal))
+        {
+            _suppressFilterEvents = true;
+            NicknameBox.SelectedIndex = -1;
+            _suppressFilterEvents = false;
+        }
+        _nicknameFilter = text;
+        if (_searchTimer is null)
+        {
+            _page = 1;
+            LoadPage();
+            return;
+        }
+        _searchTimer.Stop();
+        _searchTimer.Start();
+    }
+
+    private void NicknameBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressFilterEvents || NicknameBox.SelectedItem is not string name)
+        {
+            return;
+        }
+        _suppressFilterEvents = true;
+        SearchBox.Text = name;
+        _suppressFilterEvents = false;
+        _nicknameFilter = name;
+        _searchTimer?.Stop();
+        _page = 1;
+        LoadPage();
+    }
+
+    private void PageSizeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressFilterEvents || PageSizeBox.SelectedItem is not int size)
+        {
+            return;
+        }
+        _pageSize = size;
+        _page = 1;
+        LoadPage();
+    }
+
+    private void PrevPage_Click(object sender, RoutedEventArgs e)
+    {
+        if (_page <= 1)
+        {
+            return;
+        }
+        _page--;
+        LoadPage();
+    }
+
+    private void NextPage_Click(object sender, RoutedEventArgs e)
+    {
+        if (_page >= TotalPages)
+        {
+            return;
+        }
+        _page++;
+        LoadPage();
     }
 
     private void ClipList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -377,6 +525,7 @@ public sealed partial class ClipExportPage : Page
                           _selectedFrame >= 0 && _selectedFrame < _frames.Length;
         CoverButton.IsEnabled = framesReady;
         RerollButton.IsEnabled = framesReady && _coverExists;
+        SyncFileNameButton.IsEnabled = hasClip && !_exporting;
         CoverRing.IsActive = _framesLoading || _coverBusy;
     }
 
@@ -501,7 +650,7 @@ public sealed partial class ClipExportPage : Page
             }
 
             FileNameBox.Text = name;
-            LoadData();
+            LoadPage();
             SyncTranscriptState();
             ShowInfo(dbError.Length > 0 || txtNote.Length > 0 || coverNote.Length > 0
                     ? InfoBarSeverity.Warning
@@ -557,7 +706,7 @@ public sealed partial class ClipExportPage : Page
         }
 
         var result = ClipDeletion.Delete(row.Id, row.FilePath);
-        LoadData();
+        LoadPage();
         SyncTranscriptState();
         ShowInfo(result.Ok ? InfoBarSeverity.Success : InfoBarSeverity.Error,
             result.Ok
@@ -565,6 +714,59 @@ public sealed partial class ClipExportPage : Page
                     ? "文件不存在，已清理切片记录、文字文件、封面和识别任务"
                     : "已删除切片、文字文件、封面和相关记录"
                 : "删除失败：" + result.Error);
+    }
+
+    private void OpenVideo_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: ClipExportRow row })
+        {
+            return;
+        }
+        if (!File.Exists(row.FilePath))
+        {
+            ShowInfo(InfoBarSeverity.Error, "切片文件不存在：" + row.FilePath);
+            return;
+        }
+        try
+        {
+            Process.Start(new ProcessStartInfo { FileName = row.FilePath, UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            ShowInfo(InfoBarSeverity.Error, "打开视频失败：" + ex.Message);
+        }
+    }
+
+    private void OpenInExplorer_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: ClipExportRow row })
+        {
+            return;
+        }
+        try
+        {
+            if (File.Exists(row.FilePath))
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = $"/select,\"{row.FilePath}\"",
+                    UseShellExecute = true
+                });
+                return;
+            }
+            var dir = Path.GetDirectoryName(row.FilePath) ?? "";
+            if (dir.Length > 0 && Directory.Exists(dir))
+            {
+                Process.Start(new ProcessStartInfo { FileName = dir, UseShellExecute = true });
+                return;
+            }
+            ShowInfo(InfoBarSeverity.Warning, "切片文件和所在文件夹都不存在");
+        }
+        catch (Exception ex)
+        {
+            ShowInfo(InfoBarSeverity.Error, "打开文件管理器失败：" + ex.Message);
+        }
     }
 
     private void Transcribe_Click(object sender, RoutedEventArgs e)
@@ -737,6 +939,22 @@ public sealed partial class ClipExportPage : Page
 
     private async void Reroll_Click(object sender, RoutedEventArgs e) =>
         await GenerateCoverAsync(reroll: true);
+
+    private void SyncFileName_Click(object sender, RoutedEventArgs e)
+    {
+        var text = string.Join(" ", CoverTextBox.Text
+            .Replace("\r\n", "\n").Replace('\r', '\n')
+            .Split('\n')
+            .Select(line => line.Trim())
+            .Where(line => line.Length > 0));
+        if (text.Length == 0)
+        {
+            ShowInfo(InfoBarSeverity.Warning, "封面文字为空，无法同步文件名");
+            return;
+        }
+        FileNameBox.Text = text;
+        ShowInfo(InfoBarSeverity.Success, "已按封面文字更新文件名");
+    }
 
     private async Task GenerateCoverAsync(bool reroll = false)
     {
