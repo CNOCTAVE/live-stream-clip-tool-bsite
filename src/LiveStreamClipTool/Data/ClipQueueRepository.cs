@@ -126,6 +126,23 @@ public sealed class ClipQueueRepository
         return cmd.ExecuteScalar() is not null;
     }
 
+    public int CountPending()
+    {
+        using var conn = _db.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM clip_queue WHERE status = 'pending';";
+        return Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
+    }
+
+    /// <summary>清空等待执行的任务；running 任务保留，执行完自然出队。</summary>
+    public int ClearPending()
+    {
+        using var conn = _db.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM clip_queue WHERE status = 'pending';";
+        return cmd.ExecuteNonQuery();
+    }
+
     private void SetStatus(long id, string status, string? error, bool bumpAttempts)
     {
         using var conn = _db.Open();

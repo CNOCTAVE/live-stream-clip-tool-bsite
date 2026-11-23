@@ -104,6 +104,16 @@ public sealed class AutoClipService
         Wake();
     }
 
+    public int PendingCount() => _queue.CountPending();
+
+    /// <summary>清空等待中的任务；正在执行的任务会继续完成，不会被中断。</summary>
+    public int ClearQueue()
+    {
+        var cleared = _queue.ClearPending();
+        Changed?.Invoke(this, EventArgs.Empty);
+        return cleared;
+    }
+
     private void Wake()
     {
         if (Interlocked.CompareExchange(ref _running, 1, 0) == 0)
@@ -118,6 +128,13 @@ public sealed class AutoClipService
         {
             while (true)
             {
+                // 先等资源再取任务：等待 CPU 期间用户可能清空队列，
+                // 这样不会出现「已清空却仍执行一条」的情况。
+                if (!_queue.HasPending())
+                {
+                    break;
+                }
+                await WaitForCpuAsync();
                 var task = _queue.GetNextPending();
                 if (task is null)
                 {
@@ -125,7 +142,6 @@ public sealed class AutoClipService
                 }
                 try
                 {
-                    await WaitForCpuAsync();
                     _queue.MarkRunning(task.Id);
                     if (task.TaskType == "transcribe" && task.ClipId is long clipId)
                     {

@@ -67,18 +67,30 @@ def main() -> int:
     except ImportError:
         fail(3, "未安装 faster-whisper，请先到「依赖管理」安装 Whisper 语音识别")
 
-    stage("正在加载 Whisper 模型（首次使用需下载约 500MB，请耐心等待）…")
+    # 自动切片与识别任务交替执行时每次都会新起进程；模型已缓存时必须走
+    # local_files_only，否则 huggingface_hub 每次都会联网校验，网络不畅时
+    # 看起来就像在重复下载模型（还会先直连失败再切镜像）。
+    stage("正在加载 Whisper 模型…")
+    model = None
     try:
-        model = WhisperModel(args.model, device="cpu", compute_type="int8")
-    except Exception as ex:
-        if not use_mirror and not os.environ.get("HF_ENDPOINT"):
-            stage("直连 HuggingFace 失败，改用镜像 hf-mirror.com 重试…")
-            env = dict(os.environ)
-            env["_WHISPER_MIRROR"] = "1"
-            os.execve(sys.executable,
-                      [sys.executable, os.path.abspath(__file__)] + sys.argv[1:], env)
-        lines = str(ex).strip().splitlines()
-        fail(2, "模型加载失败：" + (lines[0] if lines else ex.__class__.__name__))
+        model = WhisperModel(args.model, device="cpu", compute_type="int8",
+                             local_files_only=True)
+    except Exception:
+        pass  # 本地缓存缺失或损坏，转到联网加载
+
+    if model is None:
+        stage("本地没有可用的 Whisper 模型，首次使用需下载约 500MB，请耐心等待…")
+        try:
+            model = WhisperModel(args.model, device="cpu", compute_type="int8")
+        except Exception as ex:
+            if not use_mirror and not os.environ.get("HF_ENDPOINT"):
+                stage("直连 HuggingFace 失败，改用镜像 hf-mirror.com 重试…")
+                env = dict(os.environ)
+                env["_WHISPER_MIRROR"] = "1"
+                os.execve(sys.executable,
+                          [sys.executable, os.path.abspath(__file__)] + sys.argv[1:], env)
+            lines = str(ex).strip().splitlines()
+            fail(2, "模型加载失败：" + (lines[0] if lines else ex.__class__.__name__))
 
     stage("正在解码音频…")
     audio = load_audio(args.ffmpeg, args.input)

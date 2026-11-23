@@ -142,6 +142,44 @@ public sealed partial class ClipPage : Page
         PageInfo.IsOpen = true;
     }
 
+    private async void ClearQueue_Click(object sender, RoutedEventArgs e)
+    {
+        var pending = AppServices.AutoClip.PendingCount();
+        if (pending == 0)
+        {
+            PageInfo.Severity = InfoBarSeverity.Informational;
+            PageInfo.Message = "切片队列为空";
+            PageInfo.IsOpen = true;
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = "清空队列",
+            Content = $"确定清空切片队列中的 {pending} 个等待任务吗？\n" +
+                      "自动切片和语音转文字的待执行任务都会移除，已生成的切片文件不受影响。" +
+                      (AppServices.AutoClip.IsBusy
+                          ? "\n当前正在执行的任务不会被中断，执行完后队列即为空。"
+                          : ""),
+            PrimaryButtonText = "清空",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        var cleared = AppServices.AutoClip.ClearQueue();
+        LoadData();
+        PageInfo.Severity = InfoBarSeverity.Success;
+        PageInfo.Message = AppServices.AutoClip.IsBusy
+            ? $"已清空 {cleared} 个等待任务，当前任务执行完后队列为空"
+            : $"已清空 {cleared} 个等待任务";
+        PageInfo.IsOpen = true;
+    }
+
     private async void DeleteSelected_Click(object sender, RoutedEventArgs e)
     {
         var rows = ClipRows.Where(r => r.IsSelected).ToList();
